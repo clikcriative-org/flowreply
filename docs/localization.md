@@ -1,6 +1,6 @@
 # Interface languages
 
-OpenReply defaults to English. Choose **English**, **繁體中文** or **Português (Brasil)** in the dashboard
+FlowReply defaults to English. Choose **English**, **繁體中文** or **Português (Brasil)** in the dashboard
 sidebar, under **Settings → Interface language**, or on the sign-in screen.
 The choice is stored in a browser cookie for one year and applies to the
 dashboard, sign-in screens, workspace invitations, and shared campaign reports.

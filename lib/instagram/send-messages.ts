@@ -245,6 +245,44 @@ export async function sendDirectMessageWithLinkButton({
   });
 }
 
+export async function sendFlowMessage({
+  context,
+  instagramAccountId,
+  recipient,
+  text,
+  buttons,
+}: {
+  context: InstagramContext;
+  instagramAccountId: string;
+  recipient: { userId: string } | { commentId: string; postId?: string };
+  text: string;
+  buttons: meta.TemplateButton[];
+}) {
+  if (context.provider === "META")
+    return meta.sendFlowMessage(
+      context.accessToken,
+      instagramAccountId,
+      "commentId" in recipient
+        ? { comment_id: recipient.commentId }
+        : { id: recipient.userId },
+      text,
+      buttons
+    );
+  const zernioButtons: Button[] = buttons.slice(0, 3).map((b) =>
+    b.type === "postback"
+      ? { type: "postback", title: b.title.slice(0, 20), payload: b.payload }
+      : { type: "url", title: b.title.slice(0, 20), url: b.url }
+  );
+  return sendZernioMessage({
+    context,
+    ...("commentId" in recipient
+      ? { commentId: recipient.commentId, postId: recipient.postId }
+      : { recipientId: recipient.userId }),
+    text,
+    ...(zernioButtons.length ? { buttons: zernioButtons } : {}),
+  });
+}
+
 export async function sendCommentReply({
   context,
   commentId,

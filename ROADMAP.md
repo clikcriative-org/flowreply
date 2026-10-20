@@ -14,28 +14,18 @@ Herdada do OpenReply e adaptada:
 - [x] Marca FlowReply, interface padrão em português, sem landing pública
 - [x] Deploy completo no Railway (`docs/deploy-railway.md`)
 
-## Fase 2 — Construtor visual de fluxos
+## Fase 2 — Construtor visual de fluxos (pronta)
 
-Substitui "1 campanha = 1 mensagem" por um fluxo com várias etapas.
+Guia de uso: [docs/fluxos.md](docs/fluxos.md).
 
-**Modelo de dados**
-- `Flow` (workspace, nome, status, gatilho) e `FlowVersion` (grafo JSON publicado, imutável)
-- `FlowRun` (contato, fluxo, nó atual, variáveis, status) para retomar quando o contato responde
-- `Contact` unificado por canal (Instagram ID / telefone WhatsApp), com `tags` e campos personalizados
+- [x] Modelos `Flow` (rascunho + versão publicada), `Contact` (multicanal, tags, campos) e `FlowRun` (estado, trava otimista, deduplicação por evento)
+- [x] Motor puro (`lib/flows/engine.ts`): mensagem com botões, esperar resposta, condição, ação (tags e webhook), atraso
+- [x] Regras da Meta embutidas: uma resposta privada por comentário, retomada automática quando a pessoa responde, limite de 24h
+- [x] Executor (`lib/flows/runner.ts`) em fila própria do BullMQ, com limite de DMs/hora e registro de erros
+- [x] Editor visual (React Flow) em `/flows`, com validação antes de publicar
+- [x] Testes: motor, validação, executor e teste de ponta a ponta (Postgres + Redis + navegador + webhook assinado)
 
-**Nós do MVP**
-| Nó | Função |
-| --- | --- |
-| Gatilho | Palavra-chave em comentário, DM ou mensagem WhatsApp |
-| Mensagem | Texto, imagem, até 3 botões |
-| Aguardar resposta | Pausa até o contato responder ou clicar (com timeout) |
-| Condição | Por resposta, tag, campo ou se segue o perfil |
-| Ação | Adicionar/remover tag, salvar campo, chamar webhook (n8n/CRM) |
-| Atraso | Esperar X minutos/horas (job atrasado no BullMQ) |
-
-**Execução**: o worker já existente ganha um `flow-runner` que avança um nó por job, respeitando o rate limit e a janela de 24h da Meta.
-
-**Editor**: React Flow (`@xyflow/react`) na rota `/flows/[id]`, com validação antes de publicar.
+Próximos incrementos sugeridos: histórico por contato, condição "segue o perfil", métricas por etapa.
 
 ## Fase 3 — WhatsApp Cloud API
 

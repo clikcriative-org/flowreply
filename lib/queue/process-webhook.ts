@@ -2,6 +2,12 @@ import { prisma } from '@/lib/db/client';
 import { getDMQueue, MESSAGE_JOB_NAME, POSTBACK_JOB_NAME } from '@/lib/queue/client';
 import { parseCommentEvents, parseMessageEvents, parsePostbackEvents, parseReadEvents } from '@/lib/meta/webhook';
 import { Prisma, type InstagramProvider } from '@/app/generated/prisma/client';
+import {
+  FLOW_EVENT_JOB,
+  FLOW_POSTBACK_PREFIX,
+  flowJobId,
+  getFlowQueue,
+} from '@/lib/flows/queue';
 
 const OPENING_DM_READ_FALLBACK_DELAY_MS = 5 * 60 * 1000;
 type InstagramPayload = Parameters<typeof parseCommentEvents>[0];
@@ -35,6 +41,7 @@ export async function processInstagramWebhook({ payload: incoming, provider, wor
       payload as Parameters<typeof parseCommentEvents>[0]
     );
     const queue = getDMQueue();
+    const flowQueue = getFlowQueue();
 
     for (const event of commentEvents) {
       const account = accountMap.get(event.instagramAccountId);
@@ -58,6 +65,24 @@ export async function processInstagramWebhook({ payload: incoming, provider, wor
         }
       );
 
+      // Flows run alongside campaigns on their own queue.
+      await flowQueue.add(
+        FLOW_EVENT_JOB,
+        {
+          accountConnectionId: account.id,
+          instagramAccountId: event.instagramAccountId,
+          source: "comment",
+          senderId: event.commenterId,
+          senderName: event.commenterName,
+          text: event.commentText,
+          commentId: event.commentId,
+          mediaId: event.mediaId,
+          originalMediaId: event.originalMediaId,
+          eventRef: `comment:${event.commentId}`,
+        },
+        { jobId: flowJobId("flowcomment", event.instagramAccountId, event.commentId) }
+      );
+
       if (account) {
         await prisma.webhookEvent.update({
           where: { id: webhookEvent.id },
@@ -72,6 +97,30 @@ export async function processInstagramWebhook({ payload: incoming, provider, wor
     );
 
     for (const event of postbackEvents) {
+      if (event.payload.startsWith(FLOW_POSTBACK_PREFIX)) {
+        const connectionId = accountMap.get(event.instagramAccountId)?.id;
+        if (!connectionId) continue;
+        await flowQueue.add(
+          FLOW_EVENT_JOB,
+          {
+            accountConnectionId: connectionId,
+            instagramAccountId: event.instagramAccountId,
+            source: "postback",
+            senderId: event.userId,
+            payload: event.payload,
+            eventRef: `postback:${event.mid ?? event.payload}`,
+          },
+          {
+            jobId: flowJobId(
+              "flowpostback",
+              event.instagramAccountId,
+              event.userId,
+              event.mid ?? event.payload
+            ),
+          }
+        );
+        continue;
+      }
       await queue.add(
         POSTBACK_JOB_NAME,
         {
@@ -118,6 +167,19 @@ export async function processInstagramWebhook({ payload: incoming, provider, wor
             event.messageId
           ).toString("base64url")}`,
         }
+      );
+
+      await flowQueue.add(
+        FLOW_EVENT_JOB,
+        {
+          accountConnectionId: account.id,
+          instagramAccountId: event.instagramAccountId,
+          source: "dm",
+          senderId: event.senderId,
+          text: event.messageText,
+          eventRef: `message:${event.messageId}`,
+        },
+        { jobId: flowJobId("flowmessage", event.instagramAccountId, event.messageId) }
       );
 
       if (account) {

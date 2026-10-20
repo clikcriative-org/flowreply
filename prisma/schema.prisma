@@ -85,6 +85,9 @@ model Workspace {
   linkClicks        LinkClick[]
   webhookEvents     WebhookEvent[]
   operationalEvents OperationalEvent[]
+  flows             Flow[]
+  contacts          Contact[]
+  flowRuns          FlowRun[]
 
   @@index([ownerId])
 }
@@ -144,6 +147,7 @@ model InstagramAccount {
   dmLogs      DmLog[]
   linkClicks  LinkClick[]
   followerSnapshots FollowerSnapshot[]
+  flows       Flow[]
 
   @@index([workspaceId])
 }
@@ -418,4 +422,97 @@ model ZernioConnection {
 model PostbackDelivery {
   id String @id
   createdAt DateTime @default(now())
+}
+
+// ─── Flows ──────────────────────────────────────────────────────────────────
+// A flow is a graph of steps (lib/flows/types.ts) edited in the visual builder.
+// `graph` is the working draft; the worker only ever runs `publishedGraph`, so
+// editing a live flow never changes what in-flight runs execute until publish.
+
+model Flow {
+  id                 String    @id @default(cuid())
+  workspaceId        String
+  instagramAccountId String
+  name               String
+  isActive           Boolean   @default(false)
+  graph              Json
+  publishedGraph     Json?
+  publishedAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  workspace        Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  instagramAccount InstagramAccount @relation(fields: [instagramAccountId], references: [id], onDelete: Cascade)
+  runs             FlowRun[]
+
+  @@index([workspaceId])
+  @@index([instagramAccountId, isActive])
+}
+
+// One person on one channel. Channel-agnostic so WhatsApp contacts share the
+// same tags, fields and flow runs as Instagram ones.
+model Contact {
+  id            String    @id @default(cuid())
+  workspaceId   String
+  channel       ContactChannel
+  // Instagram-scoped user id (IGSID), or the WhatsApp phone number.
+  externalId    String
+  // Which connected account the person talks to (Instagram account id).
+  accountRef    String
+  name          String?
+  tags          String[]  @default([])
+  fields        Json      @default("{}")
+  // Last time the person messaged us. Meta only allows free-form messages
+  // within 24 hours of it.
+  lastInboundAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  runs      FlowRun[]
+
+  @@unique([workspaceId, channel, accountRef, externalId])
+  @@index([workspaceId])
+}
+
+model FlowRun {
+  id              String        @id @default(cuid())
+  workspaceId     String
+  flowId          String
+  contactId       String
+  status          FlowRunStatus @default(RUNNING)
+  // Engine state (lib/flows/engine.ts RunState) minus the contact's tags.
+  state           Json
+  // Comment or message id that started the run, so a redelivered webhook
+  // never starts the same run twice.
+  triggerRef      String
+  originCommentId String?
+  waitUntil       DateTime?
+  lastError       String?
+  // Optimistic lock: every write bumps it, so two events for the same person
+  // can never both advance the run from the same step.
+  version         Int           @default(0)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  flow      Flow      @relation(fields: [flowId], references: [id], onDelete: Cascade)
+  contact   Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([flowId, triggerRef])
+  @@index([contactId, status])
+  @@index([workspaceId])
+}
+
+enum ContactChannel {
+  INSTAGRAM
+  WHATSAPP
+}
+
+enum FlowRunStatus {
+  RUNNING
+  WAITING
+  COMPLETED
+  FAILED
+  CANCELLED
 }

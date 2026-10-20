@@ -403,6 +403,51 @@ export async function sendDirectMessageWithLinkButton(
   return handleResponse(response);
 }
 
+/**
+ * A flow message: plain text, or a button template mixing postback ("reply")
+ * and web_url buttons. `recipient` is a comment id for the one private reply a
+ * comment allows, or the user's IGSID inside the messaging window.
+ */
+export type TemplateButton =
+  | { type: "postback"; title: string; payload: string }
+  | { type: "web_url"; title: string; url: string };
+
+export async function sendFlowMessage(
+  accessToken: string,
+  instagramAccountId: string,
+  recipient: { id: string } | { comment_id: string },
+  text: string,
+  buttons: TemplateButton[]
+): Promise<{ recipient_id: string; message_id: string }> {
+  const message = buttons.length
+    ? {
+        attachment: {
+          type: "template",
+          payload: {
+            template_type: "button",
+            text: text.slice(0, 640),
+            buttons: buttons
+              .slice(0, 3)
+              .map((b) => ({ ...b, title: b.title.slice(0, 20) })),
+          },
+        },
+      }
+    : { text };
+  const response = await fetch(
+    `${instagramGraphBase()}/${instagramAccountId}/messages`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ recipient, message }),
+    }
+  );
+
+  return handleResponse(response);
+}
+
 export async function sendCommentReply(
   accessToken: string,
   commentId: string,

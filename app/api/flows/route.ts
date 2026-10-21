@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db/client";
-import { flowAccess, jsonError } from "@/lib/flows/api";
+import { flowAccess, flowAccountLabel, jsonError } from "@/lib/flows/api";
 import { starterGraph } from "@/lib/flows/types";
 
 export const dynamic = "force-dynamic";
 
 const createFlowSchema = z.object({
   name: z.string().trim().min(1).max(100),
-  instagramAccountId: z.string().min(1),
+  channel: z.enum(["INSTAGRAM", "WHATSAPP"]).default("INSTAGRAM"),
+  accountId: z.string().min(1),
 });
+
 
 export async function GET() {
   const access = await flowAccess(false);
@@ -24,7 +26,9 @@ export async function GET() {
       isActive: true,
       publishedAt: true,
       updatedAt: true,
-      instagramAccount: { select: { id: true, username: true } },
+      channel: true,
+      instagramAccount: { select: { username: true } },
+      whatsappAccount: { select: { displayPhone: true } },
     },
   });
 
@@ -40,7 +44,11 @@ export async function GET() {
 
   return NextResponse.json({
     success: true,
-    data: flows.map((flow) => ({ ...flow, runs: runs[flow.id] ?? {} })),
+    data: flows.map(({ instagramAccount, whatsappAccount, ...flow }) => ({
+      ...flow,
+      accountLabel: flowAccountLabel({ instagramAccount, whatsappAccount }),
+      runs: runs[flow.id] ?? {},
+    })),
   });
 }
 
@@ -51,21 +59,23 @@ export async function POST(request: NextRequest) {
   const parsed = createFlowSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return jsonError("Invalid flow", 400);
 
-  const account = await prisma.instagramAccount.findFirst({
-    where: {
-      id: parsed.data.instagramAccountId,
-      workspaceId: access.context.workspaceId,
-    },
-    select: { id: true },
-  });
-  if (!account) return jsonError("Instagram account not found", 404);
+  const { name, channel, accountId } = parsed.data;
+  const where = { id: accountId, workspaceId: access.context.workspaceId };
+  const account =
+    channel === "WHATSAPP"
+      ? await prisma.whatsAppAccount.findFirst({ where, select: { id: true } })
+      : await prisma.instagramAccount.findFirst({ where, select: { id: true } });
+  if (!account) return jsonError("Account not found", 404);
 
   const flow = await prisma.flow.create({
     data: {
       workspaceId: access.context.workspaceId,
-      instagramAccountId: account.id,
-      name: parsed.data.name,
-      graph: starterGraph(),
+      channel,
+      ...(channel === "WHATSAPP"
+        ? { whatsappAccountId: account.id }
+        : { instagramAccountId: account.id }),
+      name,
+      graph: starterGraph(channel),
     },
     select: { id: true },
   });

@@ -88,6 +88,8 @@ model Workspace {
   flows             Flow[]
   contacts          Contact[]
   flowRuns          FlowRun[]
+  whatsappAccounts  WhatsAppAccount[]
+  contactEvents     ContactEvent[]
 
   @@index([ownerId])
 }
@@ -432,7 +434,10 @@ model PostbackDelivery {
 model Flow {
   id                 String    @id @default(cuid())
   workspaceId        String
-  instagramAccountId String
+  channel            ContactChannel @default(INSTAGRAM)
+  // Exactly one of the two account ids is set, matching `channel`.
+  instagramAccountId String?
+  whatsappAccountId  String?
   name               String
   isActive           Boolean   @default(false)
   graph              Json
@@ -441,12 +446,14 @@ model Flow {
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
-  workspace        Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  instagramAccount InstagramAccount @relation(fields: [instagramAccountId], references: [id], onDelete: Cascade)
+  workspace        Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  instagramAccount InstagramAccount? @relation(fields: [instagramAccountId], references: [id], onDelete: Cascade)
+  whatsappAccount  WhatsAppAccount?  @relation(fields: [whatsappAccountId], references: [id], onDelete: Cascade)
   runs             FlowRun[]
 
   @@index([workspaceId])
   @@index([instagramAccountId, isActive])
+  @@index([whatsappAccountId, isActive])
 }
 
 // One person on one channel. Channel-agnostic so WhatsApp contacts share the
@@ -470,6 +477,7 @@ model Contact {
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   runs      FlowRun[]
+  events    ContactEvent[]
 
   @@unique([workspaceId, channel, accountRef, externalId])
   @@index([workspaceId])
@@ -498,10 +506,56 @@ model FlowRun {
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   flow      Flow      @relation(fields: [flowId], references: [id], onDelete: Cascade)
   contact   Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  events    ContactEvent[]
 
   @@unique([flowId, triggerRef])
   @@index([contactId, status])
   @@index([workspaceId])
+}
+
+// A WhatsApp Business phone number connected through the Cloud API.
+model WhatsAppAccount {
+  id                String   @id @default(cuid())
+  workspaceId       String
+  phoneNumberId     String   @unique
+  wabaId            String
+  displayPhone      String
+  verifiedName      String?
+  // System User token, encrypted like Instagram tokens (lib/meta/oauth.ts).
+  accessToken       String
+  connectedAt       DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  flows     Flow[]
+
+  @@index([workspaceId])
+}
+
+// Conversation history for the contact screen: what the person sent, what
+// flows sent back, and sends that failed.
+model ContactEvent {
+  id          String         @id @default(cuid())
+  workspaceId String
+  contactId   String
+  runId       String?
+  direction   EventDirection
+  // "text", "button", "comment", "message" or "error".
+  kind        String
+  text        String
+  createdAt   DateTime       @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contact   Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  run       FlowRun?  @relation(fields: [runId], references: [id], onDelete: SetNull)
+
+  @@index([contactId, createdAt])
+  @@index([workspaceId])
+}
+
+enum EventDirection {
+  INBOUND
+  OUTBOUND
 }
 
 enum ContactChannel {

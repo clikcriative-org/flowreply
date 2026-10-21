@@ -33,6 +33,7 @@ Cinco serviços no mesmo projeto Railway, todos construídos do mesmo `Dockerfil
 | `RESEND_API_KEY`, `EMAIL_FROM` | login por link mágico (Resend) |
 | `META_GRAPH_API_VERSION` | `v25.0` |
 | `INSTAGRAM_APP_ID`, `INSTAGRAM_APP_SECRET`, `FACEBOOK_APP_SECRET`, `WEBHOOK_VERIFY_TOKEN` | do seu app na Meta |
+| `WHATSAPP_APP_SECRET`, `WHATSAPP_WEBHOOK_VERIFY_TOKEN` | opcionais, veja [whatsapp.md](whatsapp.md) |
 
    Só no `web`: `PORT=3000`. Só no `cron`: `CRON_BASE_URL=http://${{web.RAILWAY_PRIVATE_DOMAIN}}:3000` (ou a URL pública do `web`).
 

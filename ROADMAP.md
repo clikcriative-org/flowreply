@@ -27,14 +27,22 @@ Guia de uso: [docs/fluxos.md](docs/fluxos.md).
 
 Próximos incrementos sugeridos: histórico por contato, condição "segue o perfil", métricas por etapa.
 
-## Fase 3 — WhatsApp Cloud API
+## Fase 3 — WhatsApp Cloud API (pronta)
 
-- Conexão por número (Phone Number ID + token do System User), salvo criptografado como o token do Instagram
-- Webhook `/api/whatsapp/webhook` com verificação de assinatura `X-Hub-Signature-256`
-- Envio de texto, botões interativos e listas dentro da janela de 24h
-- Fora da janela: só **templates aprovados** (cadastro e sincronização no painel)
-- Inbox unificada Instagram + WhatsApp
-- Mesmo motor de fluxos da Fase 2 (o canal vira só um adaptador de envio)
+Guia: [docs/whatsapp.md](docs/whatsapp.md).
+
+- [x] Conexão por número (ID do número + ID da conta + token do usuário do sistema), validada com a Meta e salva criptografada
+- [x] Webhook `/api/whatsapp/webhook` com verificação de assinatura `X-Hub-Signature-256`
+- [x] Mesmo motor de fluxos: canal virou um adaptador (`lib/flows/channels.ts`)
+- [x] Botões de resposta interativos, botão de link nativo e links no texto quando há mistura
+- [ ] Templates aprovados (mensagens fora da janela de 24h)
+- [ ] Caixa de entrada unificada com resposta manual
+
+## Fase 4 — Contatos e histórico (pronta)
+
+- [x] Tela **Contatos** com busca, filtro por canal, tags e status das execuções
+- [x] Histórico da conversa por contato: mensagens recebidas, enviadas e falhas de envio
+- [x] Edição manual de tags
 
 ## Riscos e decisões
 

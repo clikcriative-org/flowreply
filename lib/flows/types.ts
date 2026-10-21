@@ -170,7 +170,10 @@ function isHttpsUrl(value: string): boolean {
  * the graph can be published. Messages are English source strings so the UI
  * can translate them.
  */
-export function validateGraph(graph: FlowGraph): GraphIssue[] {
+export function validateGraph(
+  graph: FlowGraph,
+  channel: "INSTAGRAM" | "WHATSAPP" = "INSTAGRAM"
+): GraphIssue[] {
   const issues: GraphIssue[] = [];
   const byId = new Map(graph.nodes.map((n) => [n.id, n]));
 
@@ -189,7 +192,12 @@ export function validateGraph(graph: FlowGraph): GraphIssue[] {
         if (!node.data.keywords.some((k) => k.trim())) {
           issues.push({ nodeId: node.id, message: "Add at least one keyword" });
         }
-        if (!node.data.onComment && !node.data.onDm) {
+        if (channel === "WHATSAPP" && !node.data.onDm) {
+          issues.push({
+            nodeId: node.id,
+            message: "WhatsApp flows start from messages",
+          });
+        } else if (!node.data.onComment && !node.data.onDm) {
           issues.push({
             nodeId: node.id,
             message: "Choose comments, DMs or both as the trigger",
@@ -310,7 +318,8 @@ export function validateGraph(graph: FlowGraph): GraphIssue[] {
 }
 
 /** Starting graph for a new flow: trigger → message. */
-export function starterGraph(): FlowGraph {
+export function starterGraph(channel: "INSTAGRAM" | "WHATSAPP" = "INSTAGRAM"): FlowGraph {
+  const whatsapp = channel === "WHATSAPP";
   return {
     nodes: [
       {
@@ -320,8 +329,8 @@ export function starterGraph(): FlowGraph {
         data: {
           keywords: [],
           wholeWord: true,
-          onComment: true,
-          onDm: false,
+          onComment: !whatsapp,
+          onDm: whatsapp,
           postId: null,
           publicReply: null,
         },

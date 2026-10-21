@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-const PROTECTED_PREFIXES = ["/dashboard", "/automations", "/flows", "/logs", "/settings"];
+const PROTECTED_PREFIXES = ["/dashboard", "/automations", "/flows", "/contacts", "/logs", "/settings"];
 
 function hasSessionCookie(request: NextRequest): boolean {
   return (
@@ -37,6 +37,7 @@ export const config = {
     "/dashboard/:path*",
     "/automations/:path*",
     "/flows/:path*",
+    "/contacts/:path*",
     "/logs/:path*",
     "/settings/:path*",
     "/login",

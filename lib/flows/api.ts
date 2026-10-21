@@ -24,3 +24,12 @@ export async function flowAccess(
   }
   return { context };
 }
+
+/** "@username" or the phone number, for lists and the editor header. */
+export function flowAccountLabel(flow: {
+  instagramAccount: { username: string } | null;
+  whatsappAccount: { displayPhone: string } | null;
+}): string {
+  if (flow.whatsappAccount) return flow.whatsappAccount.displayPhone;
+  return flow.instagramAccount ? `@${flow.instagramAccount.username}` : "";
+}

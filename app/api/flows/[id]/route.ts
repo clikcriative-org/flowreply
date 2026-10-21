@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db/client";
-import { flowAccess, jsonError } from "@/lib/flows/api";
+import { flowAccess, flowAccountLabel, jsonError } from "@/lib/flows/api";
 import { flowGraphSchema, validateGraph } from "@/lib/flows/types";
 
 export const dynamic = "force-dynamic";
@@ -27,15 +27,22 @@ export async function GET(_request: NextRequest, { params }: RouteProps) {
       graph: true,
       publishedAt: true,
       updatedAt: true,
-      instagramAccount: { select: { id: true, username: true } },
+      channel: true,
+      instagramAccount: { select: { username: true } },
+      whatsappAccount: { select: { displayPhone: true } },
     },
   });
   if (!flow) return jsonError("Flow not found", 404);
 
+  const { instagramAccount, whatsappAccount, ...rest } = flow;
   const graph = flowGraphSchema.safeParse(flow.graph);
   return NextResponse.json({
     success: true,
-    data: { ...flow, issues: graph.success ? validateGraph(graph.data) : [] },
+    data: {
+      ...rest,
+      accountLabel: flowAccountLabel({ instagramAccount, whatsappAccount }),
+      issues: graph.success ? validateGraph(graph.data, flow.channel) : [],
+    },
   });
 }
 
@@ -51,6 +58,12 @@ export async function PUT(request: NextRequest, { params }: RouteProps) {
     return jsonError("Invalid flow", 400, { details: parsed.error.issues.slice(0, 5) });
   }
 
+  const current = await prisma.flow.findFirst({
+    where: { id, workspaceId: access.context.workspaceId },
+    select: { channel: true },
+  });
+  if (!current) return jsonError("Flow not found", 404);
+
   const updated = await prisma.flow.updateMany({
     where: { id, workspaceId: access.context.workspaceId },
     data: {
@@ -62,7 +75,7 @@ export async function PUT(request: NextRequest, { params }: RouteProps) {
 
   return NextResponse.json({
     success: true,
-    data: { issues: parsed.data.graph ? validateGraph(parsed.data.graph) : [] },
+    data: { issues: parsed.data.graph ? validateGraph(parsed.data.graph, current.channel) : [] },
   });
 }
 

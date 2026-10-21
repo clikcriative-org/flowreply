@@ -2,10 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Prisma } from "../app/generated/prisma/client";
 import type { FlowGraph } from "../lib/flows/types";
 
-const { mockPrisma, mockSendFlowMessage, mockSendCommentReply, mockReserveDMSlot, mockReleaseDMSlot, mockQueueAdd } =
+const { mockPrisma, mockSendFlowMessage, mockSendCommentReply, mockReserveDMSlot, mockReleaseDMSlot, mockQueueAdd, mockSendWhatsApp } =
   vi.hoisted(() => ({
     mockPrisma: {
       instagramAccount: { findUnique: vi.fn() },
+      whatsAppAccount: { findUnique: vi.fn() },
+      contactEvent: { create: vi.fn() },
       contact: { upsert: vi.fn(), update: vi.fn() },
       flow: { findMany: vi.fn(), findUnique: vi.fn(), count: vi.fn() },
       flowRun: {
@@ -22,6 +24,7 @@ const { mockPrisma, mockSendFlowMessage, mockSendCommentReply, mockReserveDMSlot
     mockReserveDMSlot: vi.fn(),
     mockReleaseDMSlot: vi.fn(),
     mockQueueAdd: vi.fn(),
+    mockSendWhatsApp: vi.fn(),
   }));
 
 vi.mock("@/lib/db/client", () => ({ prisma: mockPrisma }));
@@ -31,6 +34,8 @@ vi.mock("@/lib/instagram/provider", () => ({
   sendFlowMessage: mockSendFlowMessage,
   sendCommentReply: mockSendCommentReply,
 }));
+vi.mock("@/lib/whatsapp/client", () => ({ sendWhatsAppMessage: mockSendWhatsApp }));
+vi.mock("@/lib/meta/oauth", () => ({ decryptToken: (v: string) => `plain:${v}` }));
 vi.mock("@/lib/utils/rate-limiter", () => ({
   reserveDMSlot: mockReserveDMSlot,
   releaseDMSlot: mockReleaseDMSlot,
@@ -213,5 +218,46 @@ describe("flow runner", () => {
     mockSendFlowMessage.mockRejectedValue(new Error("window closed"));
     await handleFlowEvent(commentJob);
     expect(mockReleaseDMSlot).toHaveBeenCalledWith("ig-biz");
+  });
+
+  it("records the inbound comment and the outbound message in the contact history", async () => {
+    await handleFlowEvent(commentJob);
+    const events = mockPrisma.contactEvent.create.mock.calls.map((c) => c[0].data);
+    expect(events).toEqual([
+      expect.objectContaining({ direction: "INBOUND", kind: "comment", text: "quero o link" }),
+      expect.objectContaining({ direction: "OUTBOUND", kind: "message", text: "Oi ana\n[Quero]", runId: "run-1" }),
+    ]);
+  });
+
+  it("runs a WhatsApp flow from a message, without the Instagram rate limit", async () => {
+    mockPrisma.whatsAppAccount.findUnique.mockResolvedValue({
+      id: "wa-row",
+      workspaceId: "ws",
+      phoneNumberId: "pn1",
+      accessToken: "enc",
+    });
+    mockPrisma.contact.upsert.mockResolvedValue({ ...contact, channel: "WHATSAPP", externalId: "5511999990000", lastInboundAt: new Date() });
+
+    await handleFlowEvent({
+      channel: "WHATSAPP",
+      accountConnectionId: "wa-row",
+      instagramAccountId: "pn1",
+      source: "dm",
+      senderId: "5511999990000",
+      senderName: "Ana",
+      text: "link por favor",
+      eventRef: "whatsapp:w1",
+    });
+
+    expect(mockPrisma.flow.count).toHaveBeenCalledWith({ where: { whatsappAccountId: "wa-row", isActive: true } });
+    expect(mockSendWhatsApp).toHaveBeenCalledWith(
+      "plain:enc",
+      "pn1",
+      "5511999990000",
+      "Oi Ana",
+      [{ type: "postback", title: "Quero", payload: "flow:run-1:a" }]
+    );
+    expect(mockReserveDMSlot).not.toHaveBeenCalled();
+    expect(mockSendCommentReply).not.toHaveBeenCalled();
   });
 });

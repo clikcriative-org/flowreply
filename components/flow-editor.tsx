@@ -200,9 +200,11 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function Inspector({
   step,
+  channel,
   onChange,
 }: {
   step: FlowNode;
+  channel: "INSTAGRAM" | "WHATSAPP";
   onChange: (step: FlowNode) => void;
 }) {
   const { t } = useI18n();
@@ -224,6 +226,12 @@ function Inspector({
             <input type="checkbox" checked={d.wholeWord} onChange={(e) => set({ wholeWord: e.target.checked })} />
             {t("Whole word only")}
           </label>
+          {channel === "WHATSAPP" ? (
+            <p className="text-xs text-muted">
+              {t("Starts when someone sends one of these words to your WhatsApp number.")}
+            </p>
+          ) : (
+            <>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={d.onComment} onChange={(e) => set({ onComment: e.target.checked })} />
             {t("Start on comments")}
@@ -247,6 +255,8 @@ function Inspector({
               onBlur={(e) => set({ publicReply: e.target.value.trim() || null })}
             />
           </Field>
+            </>
+          )}
         </div>
       );
     }
@@ -482,7 +492,8 @@ export interface FlowEditorProps {
   initialGraph: FlowGraph;
   initialIssues: GraphIssue[];
   initialActive: boolean;
-  accountUsername: string;
+  accountLabel: string;
+  channel: "INSTAGRAM" | "WHATSAPP";
 }
 
 export default function FlowEditor({
@@ -491,7 +502,8 @@ export default function FlowEditor({
   initialGraph,
   initialIssues,
   initialActive,
-  accountUsername,
+  accountLabel,
+  channel,
 }: FlowEditorProps) {
   const { t } = useI18n();
   const initial = useMemo(() => toCanvas(initialGraph, initialIssues), [initialGraph, initialIssues]);
@@ -568,7 +580,7 @@ export default function FlowEditor({
       return false;
     }
     markIssues(json.data.issues);
-    setStatus(t("Saved"));
+    setStatus(t("Changes saved"));
     return true;
   }
 
@@ -603,7 +615,9 @@ export default function FlowEditor({
             maxLength={100}
             className="min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-2 py-1 text-xl font-semibold text-foreground hover:border-border focus:border-accent/40 outline-none"
           />
-          <span className="shrink-0 text-sm text-muted">@{accountUsername}</span>
+          <span className="shrink-0 text-sm text-muted">
+            {channel === "WHATSAPP" ? "WhatsApp" : "Instagram"} · {accountLabel}
+          </span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {status && <span className="text-sm text-muted">{status}</span>}
@@ -697,7 +711,7 @@ export default function FlowEditor({
             <>
               <h2 className="mb-4 text-sm font-semibold text-foreground">{t(TYPE_LABELS[selected.type])}</h2>
               {/* key remounts uncontrolled inputs when another step is selected */}
-              <Inspector key={selected.id} step={selected} onChange={updateStep} />
+              <Inspector key={selected.id} step={selected} channel={channel} onChange={updateStep} />
             </>
           ) : (
             <p className="text-sm text-muted">

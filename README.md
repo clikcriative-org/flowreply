@@ -1,6 +1,6 @@
 # FlowReply
 
-Sistema próprio de automação para Instagram (WhatsApp na próxima fase): comentário com palavra-chave vira DM, fluxos visuais com botões, perguntas, condições e tags, links rastreados, inbox e logs. Usa a API oficial da Meta. Sem senha do Instagram, sem automação de navegador.
+Sistema próprio de automação para Instagram e WhatsApp: comentário ou mensagem com palavra-chave inicia um fluxo visual com botões, perguntas, condições e tags; contatos com histórico; links rastreados, inbox e logs. Usa a API oficial da Meta. Sem senha do Instagram, sem automação de navegador.
 
 Baseado no [OpenReply](https://github.com/diwenne/openreply) (licença MIT, ver `LICENSE`).
 
@@ -11,7 +11,8 @@ Baseado no [OpenReply](https://github.com/diwenne/openreply) (licença MIT, ver 
 | Colocar no ar no Railway | [docs/deploy-railway.md](docs/deploy-railway.md) |
 | Criar o app na Meta e variáveis em detalhe | [docs/setup.md](docs/setup.md) |
 | Criar fluxos no construtor visual | [docs/fluxos.md](docs/fluxos.md) |
-| O que vem a seguir (WhatsApp) | [ROADMAP.md](ROADMAP.md) |
+| Conectar o WhatsApp | [docs/whatsapp.md](docs/whatsapp.md) |
+| O que já existe e o que vem a seguir | [ROADMAP.md](ROADMAP.md) |
 
 ## Desenvolvimento local
 

@@ -5,19 +5,19 @@
  * saves the new state, then performs the effects. State is saved *before*
  * sending: a crash between the two loses a message rather than sending it
  * twice, which is the safer failure for DMs to real people.
+ *
+ * Channel specifics (Instagram vs WhatsApp) live in channels.ts.
  */
 
 import { Prisma } from "@/app/generated/prisma/client";
 import { prisma } from "@/lib/db/client";
-import {
-  createInstagramContext,
-  hasInstagramCredentials,
-  sendCommentReply,
-  sendFlowMessage,
-  type InstagramContext,
-} from "@/lib/instagram/provider";
 import type { TemplateButton } from "@/lib/meta/client";
-import { releaseDMSlot, reserveDMSlot } from "@/lib/utils/rate-limiter";
+import {
+  flowAccountWhere,
+  loadChannelAccount,
+  loadFlowAccount,
+  type ChannelAccount,
+} from "./channels";
 import {
   matchTrigger,
   step,
@@ -40,15 +40,7 @@ import { flowGraphSchema, type FlowGraph } from "./types";
 const WINDOW_MS = 24 * 60 * 60 * 1000;
 const WEBHOOK_TIMEOUT_MS = 5000;
 const MAX_LOCK_RETRIES = 3;
-
-type AccountRow = {
-  id: string;
-  workspaceId: string;
-  instagramId: string;
-  provider: "META" | "ZERNIO";
-  zernioAccountId: string | null;
-  accessToken: string;
-};
+const MAX_EVENT_TEXT = 2000;
 
 type ContactRow = {
   id: string;
@@ -92,33 +84,54 @@ const runStatus = {
   FAILED: "FAILED",
 } as const;
 
+/**
+ * Conversation history for the contact screen. Best effort: a failure to
+ * record history must never stop a flow from replying.
+ */
+async function recordEvent(
+  contact: Pick<ContactRow, "id" | "workspaceId">,
+  event: {
+    runId?: string | null;
+    direction: "INBOUND" | "OUTBOUND";
+    kind: string;
+    text: string;
+  }
+) {
+  try {
+    await prisma.contactEvent.create({
+      data: {
+        workspaceId: contact.workspaceId,
+        contactId: contact.id,
+        runId: event.runId ?? null,
+        direction: event.direction,
+        kind: event.kind,
+        text: event.text.slice(0, MAX_EVENT_TEXT),
+      },
+    });
+  } catch (error) {
+    console.error("[Flow Runner] Could not record contact event:", errorMessage(error));
+  }
+}
+
+function inboundEventText(job: FlowEventJob): { kind: string; text: string } | null {
+  if (job.source === "comment") return job.text ? { kind: "comment", text: job.text } : null;
+  if (job.source === "dm") return job.text ? { kind: "text", text: job.text } : null;
+  // A button tap: WhatsApp sends the title, Instagram only the payload.
+  return { kind: "button", text: job.text || "(botão)" };
+}
+
 // ─── Entry points ───────────────────────────────────────────────────────────
 
 export async function handleFlowEvent(job: FlowEventJob): Promise<void> {
-  const account = await prisma.instagramAccount.findUnique({
-    where: { id: job.accountConnectionId },
-    select: {
-      id: true,
-      workspaceId: true,
-      instagramId: true,
-      provider: true,
-      zernioAccountId: true,
-      accessToken: true,
-    },
-  });
-  if (
-    !account ||
-    account.instagramId !== job.instagramAccountId ||
-    !hasInstagramCredentials(account)
-  ) {
-    return;
-  }
+  const channel = job.channel ?? "INSTAGRAM";
+  const account = await loadChannelAccount(channel, job.accountConnectionId);
+  if (!account || account.ref !== job.instagramAccountId) return;
 
   // Every comment and DM is queued here. Without a live flow there is nothing
   // to start or resume (runs of a turned-off flow stay frozen), so stop before
   // recording a contact for every commenter.
   const liveFlows = await prisma.flow.count({
-    where: { instagramAccountId: account.id, isActive: true },
+    where: { ...flowAccountWhere(account), isActive: true },
   });
   if (!liveFlows) return;
 
@@ -127,15 +140,15 @@ export async function handleFlowEvent(job: FlowEventJob): Promise<void> {
     where: {
       workspaceId_channel_accountRef_externalId: {
         workspaceId: account.workspaceId,
-        channel: "INSTAGRAM",
-        accountRef: account.instagramId,
+        channel,
+        accountRef: account.ref,
         externalId: job.senderId,
       },
     },
     create: {
       workspaceId: account.workspaceId,
-      channel: "INSTAGRAM",
-      accountRef: account.instagramId,
+      channel,
+      accountRef: account.ref,
       externalId: job.senderId,
       name: job.senderName ?? null,
       lastInboundAt: inbound ? new Date() : null,
@@ -145,6 +158,9 @@ export async function handleFlowEvent(job: FlowEventJob): Promise<void> {
       ...(inbound ? { lastInboundAt: new Date() } : {}),
     },
   });
+
+  const inboundEvent = inboundEventText(job);
+  if (inboundEvent) await recordEvent(contact, { direction: "INBOUND", ...inboundEvent });
 
   if (job.source === "postback") {
     const postback = job.payload ? parseFlowPostback(job.payload) : null;
@@ -161,7 +177,7 @@ export async function handleFlowEvent(job: FlowEventJob): Promise<void> {
       where: {
         contactId: contact.id,
         status: "WAITING",
-        flow: { instagramAccountId: account.id, isActive: true },
+        flow: { ...flowAccountWhere(account), isActive: true },
       },
       orderBy: { updatedAt: "desc" },
     });
@@ -185,36 +201,29 @@ export async function handleFlowTimeout(job: FlowTimeoutJob): Promise<void> {
       flow: {
         select: {
           isActive: true,
-          instagramAccount: {
-            select: {
-              id: true,
-              workspaceId: true,
-              instagramId: true,
-              provider: true,
-              zernioAccountId: true,
-              accessToken: true,
-            },
-          },
+          channel: true,
+          instagramAccountId: true,
+          whatsappAccountId: true,
         },
       },
     },
   });
   if (!run || run.status !== "WAITING" || !run.flow.isActive) return;
-  const account = run.flow.instagramAccount;
-  if (!hasInstagramCredentials(account)) return;
+  const account = await loadFlowAccount(run.flow);
+  if (!account) return;
   await advanceRun(account, run.contact, run, { kind: "timeout", token: job.token });
 }
 
 // ─── Starting ───────────────────────────────────────────────────────────────
 
 async function startMatchingFlow(
-  account: AccountRow,
+  account: ChannelAccount,
   contact: ContactRow,
   job: FlowEventJob
 ): Promise<void> {
   if (!job.text || job.source === "postback") return;
   const flows = await prisma.flow.findMany({
-    where: { instagramAccountId: account.id, isActive: true },
+    where: { ...flowAccountWhere(account), isActive: true },
     orderBy: { createdAt: "asc" },
     select: { id: true, publishedGraph: true },
   });
@@ -294,7 +303,7 @@ async function startMatchingFlow(
 // ─── Advancing ──────────────────────────────────────────────────────────────
 
 async function advanceRun(
-  account: AccountRow,
+  account: ChannelAccount,
   contact: ContactRow,
   initialRun: RunRow,
   input: StepInput
@@ -362,6 +371,11 @@ function toTemplateButtons(effect: Extract<Effect, { type: "send" }>, runId: str
   );
 }
 
+function describeSend(effect: Extract<Effect, { type: "send" }>): string {
+  const buttons = effect.buttons.map((b) => `[${b.title}]`).join(" ");
+  return buttons ? `${effect.text}\n${buttons}` : effect.text;
+}
+
 async function performEffects({
   account,
   contact,
@@ -371,7 +385,7 @@ async function performEffects({
   mediaId,
   result,
 }: {
-  account: AccountRow;
+  account: ChannelAccount;
   contact: ContactRow;
   runId: string;
   flowId: string;
@@ -379,51 +393,36 @@ async function performEffects({
   mediaId?: string;
   result: StepResult;
 }): Promise<void> {
+  if (result.status === "FAILED" && result.error) {
+    await recordEvent(contact, { runId, direction: "OUTBOUND", kind: "error", text: result.error });
+  }
   if (!result.effects.length) return;
 
   if (result.effects.some((e) => e.type === "tags")) {
     await prisma.contact.update({ where: { id: contact.id }, data: { tags: result.tags } });
   }
 
-  let context: InstagramContext | null = null;
-  const getContext = async () =>
-    (context ??= await createInstagramContext(account, `flow:${runId}:${result.state.waitToken}`));
-
+  const operationId = `flow:${runId}:${result.state.waitToken}`;
   const errors: string[] = [];
 
   for (const effect of result.effects) {
     try {
       switch (effect.type) {
         case "send": {
-          const slot = await reserveDMSlot(account.instagramId);
-          if (!slot.allowed) {
-            throw new Error("Hourly DM limit reached; message not sent");
-          }
-          try {
-            await sendFlowMessage({
-              context: await getContext(),
-              instagramAccountId: account.instagramId,
-              recipient:
-                effect.viaComment && originCommentId
-                  ? { commentId: originCommentId, postId: mediaId }
-                  : { userId: contact.externalId },
-              text: effect.text,
-              buttons: toTemplateButtons(effect, runId),
-            });
-          } catch (error) {
-            await releaseDMSlot(account.instagramId);
-            throw error;
-          }
+          await account.send(
+            effect.viaComment && originCommentId
+              ? { commentId: originCommentId, postId: mediaId }
+              : { userId: contact.externalId },
+            effect.text,
+            toTemplateButtons(effect, runId),
+            operationId
+          );
+          await recordEvent(contact, { runId, direction: "OUTBOUND", kind: "message", text: describeSend(effect) });
           break;
         }
         case "public_reply": {
           if (!originCommentId) break;
-          await sendCommentReply({
-            context: await getContext(),
-            commentId: originCommentId,
-            message: effect.text,
-            postId: mediaId,
-          });
+          await account.publicReply(originCommentId, effect.text, mediaId, operationId);
           break;
         }
         case "schedule": {
@@ -459,7 +458,9 @@ async function performEffects({
           break;
       }
     } catch (error) {
-      errors.push(`${effect.type}: ${errorMessage(error)}`);
+      const message = `${effect.type}: ${errorMessage(error)}`;
+      errors.push(message);
+      await recordEvent(contact, { runId, direction: "OUTBOUND", kind: "error", text: message });
       // A message that failed to send leaves the conversation broken, so the
       // rest of this step must not run as if it had arrived.
       if (effect.type === "send") {

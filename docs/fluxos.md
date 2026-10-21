@@ -1,6 +1,6 @@
 # Fluxos (construtor visual)
 
-Fluxos são conversas automáticas em várias etapas: perguntar, oferecer botões, decidir por condição, marcar o contato com tags e enviar dados para outros sistemas. Ficam em **Fluxos**, no menu lateral.
+Fluxos são conversas automáticas em várias etapas: perguntar, oferecer botões, decidir por condição, marcar o contato com tags e enviar dados para outros sistemas. Ficam em **Fluxos**, no menu lateral, e funcionam no Instagram e no WhatsApp.
 
 Campanhas continuam existindo e funcionam em paralelo. Use **campanha** para "comentou → recebe o link". Use **fluxo** quando a conversa tem mais de um passo.
 
@@ -60,6 +60,5 @@ Falha no webhook não interrompe o fluxo; o erro fica registrado na execução.
 
 ## Limitações atuais
 
-- Não há tela de histórico por contato (os dados existem nas tabelas `Contact` e `FlowRun`).
-- O canal é só Instagram. WhatsApp entra na Fase 3 usando o mesmo motor.
+- Fluxos de WhatsApp: veja [whatsapp.md](whatsapp.md). O histórico de cada pessoa fica em **Contatos**.
 - A condição "segue o perfil" ainda não existe nos fluxos (existe nas campanhas).

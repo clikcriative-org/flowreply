@@ -10,7 +10,6 @@ import { useI18n } from "@/lib/i18n/provider";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import AccountSelect, { type AccountOption } from "@/components/account-select";
 
 interface FlowRow {
   id: string;
@@ -18,15 +17,23 @@ interface FlowRow {
   isActive: boolean;
   publishedAt: string | null;
   updatedAt: string;
-  instagramAccount: { id: string; username: string };
+  channel: "INSTAGRAM" | "WHATSAPP";
+  accountLabel: string;
   runs: Record<string, number>;
+}
+
+// One option per connected account; the value carries the channel so a flow
+// is created on the right kind of account.
+interface ChannelOption {
+  value: string;
+  label: string;
 }
 
 export default function FlowsPage() {
   const { t } = useI18n();
   const router = useRouter();
   const [flows, setFlows] = useState<FlowRow[]>([]);
-  const [accounts, setAccounts] = useState<AccountOption[]>([]);
+  const [accounts, setAccounts] = useState<ChannelOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState("");
   const [accountId, setAccountId] = useState("");
@@ -36,19 +43,28 @@ export default function FlowsPage() {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const [flowsRes, accountsRes] = await Promise.all([
+      const [flowsRes, instagramRes, whatsappRes] = await Promise.all([
         fetch("/api/flows"),
         fetch("/api/instagram/accounts"),
+        fetch("/api/whatsapp/accounts"),
       ]);
       const flowsJson = await flowsRes.json().catch(() => null);
-      const accountsJson = await accountsRes.json().catch(() => null);
+      const instagramJson = await instagramRes.json().catch(() => null);
+      const whatsappJson = await whatsappRes.json().catch(() => null);
       if (cancelled) return;
       if (flowsJson?.success) setFlows(flowsJson.data);
-      if (accountsJson?.success) {
-        const list: AccountOption[] = accountsJson.data.instagramAccounts ?? [];
-        setAccounts(list);
-        setAccountId((current) => current || list[0]?.id || "");
-      }
+      const options: ChannelOption[] = [
+        ...((instagramJson?.data?.instagramAccounts ?? []) as { id: string; username: string }[]).map((a) => ({
+          value: `INSTAGRAM:${a.id}`,
+          label: `Instagram · @${a.username}`,
+        })),
+        ...((whatsappJson?.data ?? []) as { id: string; displayPhone: string }[]).map((a) => ({
+          value: `WHATSAPP:${a.id}`,
+          label: `WhatsApp · ${a.displayPhone}`,
+        })),
+      ];
+      setAccounts(options);
+      setAccountId((current) => current || options[0]?.value || "");
       setLoading(false);
     })();
     return () => {
@@ -64,7 +80,11 @@ export default function FlowsPage() {
     const res = await fetch("/api/flows", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, instagramAccountId: accountId }),
+      body: JSON.stringify({
+        name,
+        channel: accountId.split(":")[0],
+        accountId: accountId.split(":")[1],
+      }),
     });
     const json = await res.json().catch(() => null);
     setCreating(false);
@@ -107,12 +127,22 @@ export default function FlowsPage() {
           />
         </label>
         {accounts.length > 0 && (
-          <AccountSelect
-            accounts={accounts}
-            value={accountId}
-            onChange={setAccountId}
-            includeAll={false}
-          />
+          <label className="flex flex-col gap-2 text-sm">
+            <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+              {t("Channel and account")}
+            </span>
+            <select
+              value={accountId}
+              onChange={(e) => setAccountId(e.target.value)}
+              className="min-w-52 rounded-xl border border-border bg-surface px-3 py-2 text-sm text-foreground outline-none focus:border-accent/40"
+            >
+              {accounts.map((a) => (
+                <option key={a.value} value={a.value}>
+                  {a.label}
+                </option>
+              ))}
+            </select>
+          </label>
         )}
         <button
           type="submit"
@@ -124,7 +154,7 @@ export default function FlowsPage() {
       </form>
       {!loading && accounts.length === 0 && (
         <p className="text-sm text-muted">
-          {t("Connect an Instagram account in Settings before creating a flow.")}
+          {t("Connect an Instagram account or a WhatsApp number in Settings before creating a flow.")}
         </p>
       )}
       {error && <p className="text-sm text-error">{error}</p>}
@@ -158,7 +188,7 @@ export default function FlowsPage() {
                 </span>
               </div>
               <p className="mt-1 text-xs text-muted">
-                @{flow.instagramAccount.username} ·{" "}
+                {flow.channel === "WHATSAPP" ? "WhatsApp" : "Instagram"} · {flow.accountLabel} ·{" "}
                 {t("{count} completed", { count: flow.runs.COMPLETED ?? 0 })} ·{" "}
                 {t("{count} waiting", { count: flow.runs.WAITING ?? 0 })} ·{" "}
                 {t("{count} failed", { count: flow.runs.FAILED ?? 0 })}

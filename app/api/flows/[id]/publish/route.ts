@@ -21,7 +21,7 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
 
   const flow = await prisma.flow.findFirst({
     where: { id, workspaceId: access.context.workspaceId },
-    select: { id: true, graph: true },
+    select: { id: true, graph: true, channel: true },
   });
   if (!flow) return jsonError("Flow not found", 404);
 
@@ -32,7 +32,7 @@ export async function POST(request: NextRequest, { params }: RouteProps) {
 
   const graph = flowGraphSchema.safeParse(flow.graph);
   if (!graph.success) return jsonError("The saved flow is invalid", 400);
-  const issues = validateGraph(graph.data);
+  const issues = validateGraph(graph.data, flow.channel);
   if (issues.length) return jsonError("Fix the flow before publishing", 400, { issues });
 
   const published = await prisma.flow.update({

@@ -15,8 +15,13 @@ export const FLOW_TIMEOUT_JOB = "flow-timeout";
 export const FLOW_POSTBACK_PREFIX = "flow:";
 
 export interface FlowEventJob {
-  // InstagramAccount row id (not the Instagram id).
+  // Absent on jobs queued before WhatsApp support, which are all Instagram.
+  channel?: "INSTAGRAM" | "WHATSAPP";
+  // InstagramAccount or WhatsAppAccount row id.
   accountConnectionId: string;
+  // The business side of the conversation: the Instagram account id, or the
+  // WhatsApp phone number id. Checked against the row so a stale job for a
+  // reconnected account is dropped.
   instagramAccountId: string;
   source: "comment" | "dm" | "postback";
   senderId: string;

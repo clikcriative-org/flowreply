@@ -31,7 +31,8 @@ export default function FlowEditorPage({ params }: RouteProps) {
         initialGraph: graph.data,
         initialIssues: json.data.issues ?? [],
         initialActive: json.data.isActive,
-        accountUsername: json.data.instagramAccount.username,
+        accountLabel: json.data.accountLabel,
+        channel: json.data.channel,
       });
     })();
     return () => {

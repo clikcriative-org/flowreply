@@ -36,10 +36,29 @@ Cinco serviços no mesmo projeto Railway, todos construídos do mesmo `Dockerfil
 
    Só no `web`: `PORT=3000`. Só no `cron`: `CRON_BASE_URL=http://${{web.RAILWAY_PRIVATE_DOMAIN}}:3000` (ou a URL pública do `web`).
 
-7. **App na Meta**: siga a parte "Meta app" de [setup.md](setup.md). URLs que você vai cadastrar:
-   - OAuth redirect: `https://<domínio>/api/instagram/callback`
-   - Webhook: `https://<domínio>/api/webhook` com o `WEBHOOK_VERIFY_TOKEN`, campos `comments` e `messages`
-8. **Teste**: abra `https://<domínio>/api/health`, faça login com o e-mail liberado, conecte o Instagram, crie uma campanha e comente a palavra-chave a partir de **outra** conta.
+7. **App na Meta**: veja a seção abaixo.
+8. **Teste**: abra `https://<domínio>/api/health`, faça login com o e-mail liberado, conecte o Instagram, crie uma campanha ou fluxo e comente a palavra-chave a partir de **outra** conta.
+
+## App na Meta (sem App Review)
+
+Para um sistema que só atende **as suas contas**, a Meta não exige App Review: o Standard Access basta. O que ela exige é que cada conta tenha papel no app e que o app esteja publicado (Live).
+
+**Use um app novo, só para o FlowReply.** Não reaproveite o app "gerenciador": ele já envia os webhooks de WhatsApp para outro sistema, e cada app só tem um endereço de webhook por produto. Misturar os dois quebra um deles.
+
+1. developers.facebook.com → Meus apps → Criar app → tipo **Empresa** → nome "FlowReply".
+2. Adicione o produto **Instagram** → "API com login do Instagram".
+3. Em "Configurar login comercial do Instagram", cadastre o redirect `https://<domínio>/api/instagram/callback`.
+4. Copie o **ID do app do Instagram** e a **chave secreta do app do Instagram** para `INSTAGRAM_APP_ID` e `INSTAGRAM_APP_SECRET`. Em Configurações → Básico, copie a chave secreta do app para `FACEBOOK_APP_SECRET`.
+5. **Webhooks** (produto Instagram): URL `https://<domínio>/api/webhook`, token = `WEBHOOK_VERIFY_TOKEN`. Assine os campos `comments` e `messages`.
+6. **Funções do app → Testadores do Instagram**: convide o @ de cada conta que vai usar. Depois, no Instagram de cada conta: Editar perfil → Apps e sites → Convites de testador → **Aceitar**. Sem isso o login falha com "Insufficient Developer Role".
+7. **Configurações → Básico**: preencha
+   - Política de privacidade: `https://<domínio>/privacy`
+   - Termos de serviço: `https://<domínio>/terms`
+   - Exclusão de dados: `https://<domínio>/data-deletion`
+   - Categoria e ícone do app
+8. **Publicar** (menu lateral) → mude para **Live**. Em modo desenvolvimento, os comentários reais **não** geram webhook; só o botão de teste do painel.
+
+Pronto: a partir daqui, qualquer pessoa que comentar nos posts das suas contas recebe a DM. App Review só seria necessário para conectar contas de **outras** empresas (ex.: vender o sistema para clientes).
 
 ## Custo estimado
 

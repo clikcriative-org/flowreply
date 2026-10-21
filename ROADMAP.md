@@ -38,7 +38,7 @@ Próximos incrementos sugeridos: histórico por contato, condição "segue o per
 
 ## Riscos e decisões
 
-- **App Review da Meta**: necessário para `instagram_business_manage_messages` e `whatsapp_business_messaging` em produção. Inicie cedo; leva semanas.
+- **App Review da Meta**: não é necessário enquanto o sistema atende só as suas contas (Standard Access). Passa a ser obrigatório, junto com a verificação da empresa, se você quiser conectar contas de clientes.
 - **Custo WhatsApp**: a Meta cobra por conversa/mensagem de template. Mensagens de marketing para listas frias são caras e arriscam bloqueio do número.
 - **Disparos em massa**: fora do escopo atual. No Instagram, a Meta proíbe DM fora da janela de 24h.
 - **Atualizações do OpenReply**: o remoto `upstream` permite trazer correções (`git fetch upstream && git merge upstream/main`). Quanto mais o código divergir, mais conflitos. Concentre código novo em pastas próprias (`lib/flows`, `lib/whatsapp`).
